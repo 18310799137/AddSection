@@ -1,0 +1,8 @@
+﻿  _file_util.cpp
+_file_util.cpp(20): warning C4838: 从“int”转换到“char”需要收缩转换
+_file_util.cpp(20): warning C4309: “初始化”: 截断常量值
+_file_util.cpp(372): warning C4018: “<”: 有符号/无符号不匹配
+x:\resource\visual2017_workspace\addsection\addsection\_file_util.cpp(495): warning C4715: “_foa_to_rva”: 不是所有的控件路径都返回值
+x:\resource\visual2017_workspace\addsection\addsection\_file_util.cpp(550): warning C4715: “_rva_to_foa”: 不是所有的控件路径都返回值
+  LINK : 已指定 /LTCG，但不需要生成代码；从链接命令行中移除 /LTCG 以提高链接器性能
+  AddSection.vcxproj -> X:\resource\visual2017_workspace\AddSection\Release\AddSection.exe
