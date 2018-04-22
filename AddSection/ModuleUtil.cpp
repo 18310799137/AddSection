@@ -5,7 +5,7 @@ ModuleAddr myLoadLibrary(TCHAR * filePath)
 		char* fBuff=NULL;
 		//¼ÓÔØlibraryµ½ÄÚ´æ
 		int size = _read_file_to_fbuff(filePath, &fBuff);
-		char* test =(char*) malloc(0x7F00000);
+
 		char* _i_buff = NULL;
 		int _i_buff_size = _read_fbuff_to_ibuff(fBuff, &_i_buff);
 
