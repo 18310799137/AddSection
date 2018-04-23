@@ -32,12 +32,12 @@ void _run_app()
 		//读取文件到内存中
 		int fileSize = _read_file_to_fbuff(fileName, &_f_buff);
 
-		
+		printImpTab(_f_buff, fileSize);
 		//移动导出表
 		//	move_exp_table(_f_buff, fileSize);
 
 		//移动重定位表
-		char* relocationFileBuff = move_relocation_table(_f_buff, fileSize);
+	//	char* relocationFileBuff = move_relocation_table(_f_buff, fileSize);
 		//char* _i_buff = NULL;
 
 		//int _i_buff_size = _read_fbuff_to_ibuff(_f_buff, &_i_buff);
@@ -238,7 +238,7 @@ int  _read_file_to_fbuff(TCHAR* _file_path,char** _f_buffer)
 		//创建文件大小的数组
 		char* _f_buff = new char[fileSize];
 		*_f_buffer = _f_buff;
-		fread_s(_f_buff, fileSize, 1, fileSize, fileRead);
+		fread(_f_buff, fileSize, 1,  fileRead);
 
 		//关闭 读入和写出流
 		fclose(fileRead);
@@ -547,6 +547,12 @@ DWORD _rva_to_foa(char* _f_buff, DWORD _rva)
 						return 	_point_section + (_rva - _vAddr);
 				}
 		}
+
+		if (_rva >0 && _rva<_section_header[0].PointerToRawData)
+		{
+				return _rva;
+		}
+		return 0;
 }
 /*将硬盘状态转换为内存状态 - 文件在内存中拉伸状态，将文件对齐   称为filebuffer -> imagebuffer*/
 int 	_read_fbuff_to_ibuff(char* _f_buff, char** _i_buff)

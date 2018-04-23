@@ -22,3 +22,6 @@ void restoreTable(char * _f_buff);
 
 /* 修复重定位表 拉伸后的状态*/
 void restoreTableIbuff(char * _i_buff);
+
+//打印导入表
+void printImpTab(char* fBuff, int buffSize);

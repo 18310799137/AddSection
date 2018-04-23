@@ -604,3 +604,103 @@ void restoreTableIbuff(char * _i_buff)
 		}
 		printf("重定位表共有%d块", _lump_count);
 }
+//打印导入表
+void printImpTab(char * fBuff, int buffSize)
+{
+		_IMAGE_DOS_HEADER* _dos = (_IMAGE_DOS_HEADER*)fBuff;
+		_IMAGE_NT_HEADERS* _nt = (_IMAGE_NT_HEADERS*)(fBuff + _dos->e_lfanew);
+		IMAGE_DATA_DIRECTORY*  _data_table = _nt->OptionalHeader.DataDirectory;
+		//获取导入表结构指针  在目录项数组的第二个位置
+		_IMAGE_IMPORT_DESCRIPTOR*  impTable =(_IMAGE_IMPORT_DESCRIPTOR*)(fBuff + _rva_to_foa(fBuff, _data_table[1].VirtualAddress));
+		//DLL的函数地址未绑定好
+		if(impTable->TimeDateStamp==0)
+		{
+				if (impTable->OriginalFirstThunk == 0)
+				{
+						printf("没有导入表\n");
+						return;
+				}
+				//循环导出表结构体，遍历所要调用的所有PE模块 判断结构标记
+				while (impTable->OriginalFirstThunk != 0)
+				{
+						char* moduleName = fBuff + _rva_to_foa(fBuff, impTable->Name);
+						printf("=========当前模块名称 [%s]======TimeDateStamp:%X\n", moduleName, impTable->TimeDateStamp);
+
+						//获取导入表 INT表的地址
+						IMAGE_THUNK_DATA* IntThunkData = ((IMAGE_THUNK_DATA*)(fBuff + _rva_to_foa(fBuff, impTable->OriginalFirstThunk)));
+						//获取导入表 IAT表的地址
+						IMAGE_THUNK_DATA* IatThunkData = ((IMAGE_THUNK_DATA*)(fBuff + _rva_to_foa(fBuff, impTable->FirstThunk)));
+
+						//判断INT表结束标记
+						while (IntThunkData->u1.Ordinal != 0)
+						{
+								//获取导入表的名字
+								DWORD numOrName = IntThunkData->u1.Ordinal;
+								//取出标记 判断为序号导入还是名字导入
+								DWORD flag = numOrName & 0x80000000;
+
+								DWORD iatFunName = IatThunkData->u1.Ordinal;
+								if (flag == 0x80000000)
+								{
+										DWORD number = numOrName & 0x7FFFFFFF;
+										//序号导入
+										printf("OriginalFirstThunk - 导入序号为:%d(%XH)   FirstThunk - %X  \n", number, number, iatFunName);
+								}
+								else {
+										CHAR*  namefoaAddr = fBuff + _rva_to_foa(fBuff, numOrName);
+										IMAGE_IMPORT_BY_NAME* impByName = (IMAGE_IMPORT_BY_NAME*)namefoaAddr;
+
+										//为名字导入
+										printf("OriginalFirstThunk - 导入名字为%s    FirstThunk - %X  \n", impByName->Name, iatFunName);
+								}
+								//指向下一个INT表
+								IntThunkData++;
+								//指向下一个IAT表
+								IatThunkData++;
+						}
+
+						//指向下一个导入表 结构体
+						impTable++;
+				}
+				printf("================导入表模块遍历结束========\n");
+		}
+		//已经绑定好 ,检查绑定导入表
+		else if(impTable->TimeDateStamp == -1)
+		{
+				printf("打印绑定导入表 impTable->TimeDateStamp:%X \n", impTable->TimeDateStamp);
+				//计算绑定导入表foa
+				DWORD boundTabFoa = _rva_to_foa(fBuff, _data_table[11].VirtualAddress);
+				if (!boundTabFoa) 
+				{
+						printf("打印绑定导入表  转换FOA地址无效");
+						return;
+				}
+				//获取导入表结构指针  在目录项数组的第十二个位置
+				_IMAGE_BOUND_IMPORT_DESCRIPTOR*  boundImpTable = (_IMAGE_BOUND_IMPORT_DESCRIPTOR*)(fBuff + boundTabFoa);
+				
+				char*  tempBoundImpTable =(char*) boundImpTable;
+				while(boundImpTable->TimeDateStamp|| boundImpTable->OffsetModuleName)
+				{
+						WORD numModule =boundImpTable->NumberOfModuleForwarderRefs;
+				
+						printf("TimeDateStamp:%X - OffsetModuleName:%s - NumberOfModule: %d\n", boundImpTable-> TimeDateStamp, tempBoundImpTable +boundImpTable->OffsetModuleName, boundImpTable->NumberOfModuleForwarderRefs);
+						//指向下一个结构体
+						_IMAGE_BOUND_FORWARDER_REF* boundForward =		(_IMAGE_BOUND_FORWARDER_REF*)(boundImpTable++);
+						for (size_t i = 0; i < numModule; i++)
+						{
+								printf("TimeDateStamp:%X - OffsetModuleName:%s\n", boundForward->TimeDateStamp, tempBoundImpTable + boundForward->OffsetModuleName);
+								boundForward++;
+						}
+
+						boundImpTable = boundImpTable + numModule;
+				}
+				printf("=================打印绑定导入表结束==========\n");
+
+		}
+		//没有导入表
+		else
+		{
+				printf("没有导入表");
+		}
+
+}
