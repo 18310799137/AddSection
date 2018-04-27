@@ -180,7 +180,7 @@ char* add_section(char * _f_buff, int _file_buff_size,const char * name,int virt
 
 	_mem_copy((char*)name,(char*)(&_section_header[sectionNum].Name), IMAGE_SIZEOF_SHORT_NAME);
 	_nt_header->FileHeader.NumberOfSections = (++sectionNum);
-		_mem_copy(_f_buff, _file_buff,_file_buff_size + _add_section_need_size_);
+		_mem_copy(_f_buff, _file_buff,_file_buff_size);
 		return _file_buff;
 }
 void move_exp_table(char * _file_buff, int _file_buff_size)
@@ -639,19 +639,19 @@ void printImpTab(char * fBuff, int buffSize)
 								//取出标记 判断为序号导入还是名字导入
 								DWORD flag = numOrName & 0x80000000;
 
-								DWORD iatFunName = IatThunkData->u1.Ordinal;
+								DWORD iatFunNameAddr = IatThunkData->u1.Ordinal;
 								if (flag == 0x80000000)
 								{
 										DWORD number = numOrName & 0x7FFFFFFF;
 										//序号导入
-										printf("OriginalFirstThunk - 导入序号为:%d(%XH)   FirstThunk - %X  \n", number, number, iatFunName);
+										printf("OriginalFirstThunk - 导入序号为:%d(%XH)   FirstThunk - %X  \n", number, number, iatFunNameAddr);
 								}
 								else {
 										CHAR*  namefoaAddr = fBuff + _rva_to_foa(fBuff, numOrName);
 										IMAGE_IMPORT_BY_NAME* impByName = (IMAGE_IMPORT_BY_NAME*)namefoaAddr;
 
 										//为名字导入
-										printf("OriginalFirstThunk - 导入名字为%s    FirstThunk - %X  \n", impByName->Name, iatFunName);
+										printf("OriginalFirstThunk - 导入名字为%s FirstThunk - %X Hint[%X] \n", impByName->Name, iatFunNameAddr, impByName->Hint);
 								}
 								//指向下一个INT表
 								IntThunkData++;
@@ -704,3 +704,105 @@ void printImpTab(char * fBuff, int buffSize)
 		}
 
 }
+
+/*移动导入表 添加自定义的dll 参数是这个PE结构的buffer地址
+1.步骤将自定义的Dll 放入EXE目录
+2.移动exe导入表 将自定义的Dll信息 添加到导入表
+*/void moveImpTab(char * fBuff, int fBuffSize,const char* dllName)
+{
+		const char* funcName = "_div";
+		_IMAGE_DOS_HEADER* _dos = (_IMAGE_DOS_HEADER*)fBuff;
+		_IMAGE_NT_HEADERS* _nt = (_IMAGE_NT_HEADERS*)(fBuff + _dos->e_lfanew);
+		IMAGE_DATA_DIRECTORY*  _data_table = _nt->OptionalHeader.DataDirectory;
+
+		char* impTableFoa =  fBuff + _rva_to_foa(fBuff, _data_table[1].VirtualAddress) ;
+		//获取导入表结构指针  在目录项数组的第二个位置
+		_IMAGE_IMPORT_DESCRIPTOR*  impTable = (_IMAGE_IMPORT_DESCRIPTOR*)impTableFoa;
+		//DLL的函数地址未绑定好
+		if (impTable->TimeDateStamp == 0)
+		{
+				if (impTable->OriginalFirstThunk == 0)
+				{
+						printf("没有导入表\n");
+						return;
+				}
+				//记录INT表和IAT表所需的字节大小
+				int iatSize =16;
+				//记录导出表结构的个数 起始数为1,是多余的结束标记
+				int impTableCount = 2;
+				//循环导出表结构体，遍历所要调用的所有PE模块 判断结构标记
+				while (impTable->OriginalFirstThunk != 0)
+				{
+						char* moduleName = fBuff + _rva_to_foa(fBuff, impTable->Name);
+						printf("=========当前模块名称 [%s]======TimeDateStamp:%X\n", moduleName, impTable->TimeDateStamp);
+
+						impTableCount ++;
+						//指向下一个导入表 结构体
+						impTable++;
+				}
+				//计算导出表结构体所占字节的大小sizeof(_IMAGE_IMPORT_DESCRIPTOR)*impTableCount
+				int impTableSize = sizeof(_IMAGE_IMPORT_DESCRIPTOR)*impTableCount;
+				//新增节所需的内存大小 = 导入表结构数量*大小 + IAT和INT表所需的数量 + _IMAGE_BOUND_FORWARDER_REF结构体的大小（函数名字的长度）
+				int vSize = impTableSize + iatSize+ strlen(funcName)+strlen(dllName)+4;
+				printf("================导入表模块遍历结束========\n");
+
+				int addBufferSize = 0;
+				//返回添加节后的新的buffer
+				char* addBuffer = add_section(fBuff, fBuffSize, "mDLL", vSize, &addBufferSize);
+				_IMAGE_DOS_HEADER* addSectionDosHeader = (_IMAGE_DOS_HEADER*)addBuffer;
+				_IMAGE_NT_HEADERS* addSectionNtHeader = (_IMAGE_NT_HEADERS*)(addBuffer + addSectionDosHeader->e_lfanew);
+				IMAGE_DATA_DIRECTORY*  addSecDataTable = addSectionNtHeader->OptionalHeader.DataDirectory;
+				//获取导入表结构指针  在目录项数组的第二个位置 
+				char* addSecImpTable = addBuffer + _rva_to_foa(addBuffer, addSecDataTable[1].VirtualAddress);
+				
+				
+				//新增节的文件偏移
+				char* addSectionFoaOffset = addBuffer + fBuffSize;
+
+				//获取导入表结构指针首个 foa地址
+				_IMAGE_IMPORT_DESCRIPTOR*  impTableDes = (_IMAGE_IMPORT_DESCRIPTOR*)addSectionFoaOffset;
+
+				//在新节中拷贝导出表
+				_mem_copy(addSecImpTable, addSectionFoaOffset, impTableSize - 2*sizeof(_IMAGE_IMPORT_DESCRIPTOR));
+				//函数名称在文件中的偏移
+				DWORD funNameFoaOffset = fBuffSize + impTableSize + 18;
+				
+				//在导出表结构末尾 添加IAT表和INT表 各空8个字节 拷贝_IMAGE_BOUND_FORWARDER_REF结构体  拷贝函数名称字符串
+				_mem_copy((char*)funcName, addBuffer+ funNameFoaOffset,strlen(funcName)+1);
+				//函数名称的rva地址
+				DWORD funNameRvaOffset = _foa_to_rva(addBuffer, funNameFoaOffset-2);
+				IMAGE_IMPORT_BY_NAME* boundRef = (IMAGE_IMPORT_BY_NAME*)	(addBuffer + fBuffSize + impTableSize + 16);
+				
+				boundRef->Hint = 0x38F;
+
+				//拷贝DLL名称 拷贝的位置是 新增节的文件buffer + 原文件大小+ 所有导入表结构体大小 + INT表和IAT表大小（各占8个字节） + 结构体_IMAGE_BOUND_FORWARDER_REF+名称子长度+结尾1（'\0'）
+				_mem_copy((char*)dllName, addBuffer + funNameFoaOffset +strlen(funcName)+1,strlen(dllName)+1);
+
+				//给INT 和 IAT表添加 函数名称的地址
+		  *((DWORD*)(addSectionFoaOffset + impTableSize)) = funNameRvaOffset;
+				*((DWORD*)(addSectionFoaOffset + impTableSize+8)) = funNameRvaOffset;
+				/*		*((DWORD*)(addSectionFoaOffset + impTableSize)) = 0x8000038f;
+				*((DWORD*)(addSectionFoaOffset + impTableSize + 8)) = 0x8000038f;*/
+
+
+				//指定INT表的rva地址
+				impTableDes[impTableCount - 2].OriginalFirstThunk = _foa_to_rva(addBuffer, fBuffSize+ impTableSize);
+				//指定IAT表的rva地址
+				impTableDes[impTableCount - 2].FirstThunk = _foa_to_rva(addBuffer, fBuffSize + impTableSize+8);
+
+				impTableDes[impTableCount - 2].TimeDateStamp = 0;
+				impTableDes[impTableCount - 2].Name = _foa_to_rva(addBuffer, funNameFoaOffset + strlen(funcName) + 1);
+
+				addSecDataTable[1].VirtualAddress = _foa_to_rva(addBuffer, fBuffSize);
+				addSecDataTable[1].Size += sizeof(_IMAGE_IMPORT_DESCRIPTOR);
+				_write_restore_to_file(addBufferSize, addBuffer);
+
+
+		}
+		//使用的是绑定导入表
+		else {
+				printf("使用的绑定导入表");
+		}
+
+}
+

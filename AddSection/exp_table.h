@@ -25,3 +25,9 @@ void restoreTableIbuff(char * _i_buff);
 
 //打印导入表
 void printImpTab(char* fBuff, int buffSize);
+
+/*移动导入表 添加自定义的dll 参数是这个PE结构的buffer地址   
+1.步骤将自定义的Dll 放入EXE目录
+2.移动exe导入表 将自定义的Dll信息 添加到导入表
+*/
+void moveImpTab(char* fBuff,int fBuffSize, const char* dllName);

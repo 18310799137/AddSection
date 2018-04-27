@@ -32,7 +32,8 @@ void _run_app()
 		//读取文件到内存中
 		int fileSize = _read_file_to_fbuff(fileName, &_f_buff);
 
-		printImpTab(_f_buff, fileSize);
+	moveImpTab(_f_buff, fileSize,"Dll1.dll");
+	//	printImpTab(_f_buff, fileSize);
 		//移动导出表
 		//	move_exp_table(_f_buff, fileSize);
 
